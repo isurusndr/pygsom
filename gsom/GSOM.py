@@ -4,6 +4,7 @@ from scipy.spatial import distance
 import scipy
 from tqdm import tqdm
 import math
+from bigtree import Node, findall, find
 
 data_filename = "example/data/zoo.txt".replace('\\', '/')
 
@@ -44,23 +45,25 @@ class GSOM:
         self.initialize = initialize
         self.learning_rate = learning_rate
         self.smooth_learning_factor = smooth_learning_factor
-        self.max_radius = max_radius
-        self.initialize_GSOM()
+        self.max_radius = max_radius        
         self.node_labels = None  # Keep the prediction GSOM nodes
         self.output = None # keep the cluster id of each data point
         # HTM sequence learning parameters
         self.predictive = None  # Keep the prediction of the next sequence value (HTM predictive state)
         self.active = None  # Keep the activation of the current sequence value (HTM active state)
         self.sequence_weights = None  # Sequence weight matrix. This has the dimensions node count*column height
+        self.path_tree = {}  # To store the root nodes of path trees using bigtree
+        self.initialize_GSOM()
 
 
     def initialize_GSOM(self):
-        self.insert_node_with_weights(1, 1)
-        self.insert_node_with_weights(1, 0)
-        self.insert_node_with_weights(0, 1)
-        self.insert_node_with_weights(0, 0)
+        self.path_tree = Node("root", x=0.01, y=0.01, node_number=-1, distance=0) #initialize the root node
+        
+        for x, y in [(1, 1), (1, 0), (0, 1), (0, 0)]:
+            self.insert_node_with_weights(x, y)
+        
 
-    def insert_new_node(self, x, y, weights):
+    def insert_new_node(self, x, y, weights, parent_node=None):
         if self.node_count > self.initial_node_size:
             print("node size out of bound")
             # TODO:resize the nodes
@@ -68,15 +71,33 @@ class GSOM:
         self.node_list[self.node_count] = weights
         self.node_coordinate[self.node_count][0] = x
         self.node_coordinate[self.node_count][1] = y
+
+        # Create a Node in the tree structure with node ID and Euclidean distance from parent
+        # distance_from_parent = (
+        #     np.linalg.norm(weights - self.node_list[self.map[(parent_node.x, parent_node.y)]] if parent_node else 0) ##check here
+        #     if parent_node else 0
+        # )
+        distance_from_parent=0
+        new_node = Node(str(self.node_count), x=x, y=y, node_number=self.node_count, distance=distance_from_parent)
+
+        if parent_node is not None:
+            new_node.parent = parent_node
+            print(f'parent node: {parent_node} child node: {new_node}')
+            #parent_node.add_child(new_node)
+        else:
+            raise ValueError("Parent node is not provided")
+
         self.node_count += 1
 
     def insert_node_with_weights(self, x, y):
         if self.initialize == 'random':
             node_weights = np.random.rand(self.dimentions)
         else:
-            print("initialize method not support")
+            raise NotImplementedError("Initialization method not supported")
             # TODO:: add other initialize methods
-        self.insert_new_node(x, y, node_weights)
+        
+        #insert a new node into root level
+        self.insert_new_node(x, y, node_weights, parent_node=self.path_tree)
 
     def _get_learning_rate(self, prev_learning_rate):
         return self.ALPHA * (1 - (self.R / self.node_count)) * prev_learning_rate
@@ -167,6 +188,7 @@ class GSOM:
         :param side:
         """
         if not (x, y) in self.map:
+            print(f'adding new node to ({wx},{wy}) at ({x},{y}) side:', side)
             if side == 0:  # add new node to left of winner
                 if (x - 1, y) in self.map:
                     weights = self._new_weights_for_new_node_in_middle(wx, wy, x - 1, y)
@@ -211,10 +233,15 @@ class GSOM:
                     weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx - 1, wy)
                 else:
                     weights = self._new_weights_for_new_node_one_older_neighbour(wx, wy)
+            else:
+                raise ValueError("Invalid side specified")
+                
             # clip the wight between (0,1)
             weights[weights < 0] = 0.0
             weights[weights > 1] = 1.0
-            self.insert_new_node(x, y, weights)
+            
+            parent_node = find(self.path_tree, lambda node: node.x==wx and node.y==wy)
+            self.insert_new_node(x, y, weights, parent_node=parent_node)
 
     def spread_wights(self, x, y):
         leftx, lefty = x - 1, y
@@ -361,6 +388,12 @@ class GSOM:
         self.output = data_out
 
         return self.node_labels
+        
+        
+    def get_paths(self):
+        paths = []
+        paths.extend(self.path_tree.get_paths())
+        return paths
 
 
 if __name__ == '__main__':
