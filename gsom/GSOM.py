@@ -71,19 +71,17 @@ class GSOM:
         self.node_list[self.node_count] = weights
         self.node_coordinate[self.node_count][0] = x
         self.node_coordinate[self.node_count][1] = y
-
-        # Create a Node in the tree structure with node ID and Euclidean distance from parent
-        # distance_from_parent = (
-        #     np.linalg.norm(weights - self.node_list[self.map[(parent_node.x, parent_node.y)]] if parent_node else 0) ##check here
-        #     if parent_node else 0
-        # )
+        
         distance_from_parent=0
         new_node = Node(str(self.node_count), x=x, y=y, node_number=self.node_count, distance=distance_from_parent)
 
         if parent_node is not None:
+            if (parent_node.x, parent_node.y) in self.map:
+                distance_from_parent = scipy.spatial.distance.cdist(weights.reshape(1, -1), self.node_list[self.map[(parent_node.x, parent_node.y)]].reshape(1, -1), self.distance)
+                new_node.distance = distance_from_parent[0][0]
+                
             new_node.parent = parent_node
-            print(f'parent node: {parent_node} child node: {new_node}')
-            #parent_node.add_child(new_node)
+            #print(f'parent node: {parent_node} child node: {new_node} diance: {distance_from_parent}')
         else:
             raise ValueError("Parent node is not provided")
 
@@ -188,7 +186,7 @@ class GSOM:
         :param side:
         """
         if not (x, y) in self.map:
-            print(f'adding new node to ({wx},{wy}) at ({x},{y}) side:', side)
+            #print(f'adding new node to ({wx},{wy}) at ({x},{y}) side:', side)
             if side == 0:  # add new node to left of winner
                 if (x - 1, y) in self.map:
                     weights = self._new_weights_for_new_node_in_middle(wx, wy, x - 1, y)
