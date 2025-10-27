@@ -246,7 +246,7 @@ class GSOM:
             self.grow_node(x, y, topx, topy, 2)
             self.grow_node(x, y, bottomx, bottomy, 3)
             self.node_errors[rmu_index] = self.groth_threshold/2 #TODO check the need of setting the error to zero after weight adaptation
-
+    
     def winner_identification_and_neighbourhood_update(self, data_index, data, radius, learning_rate):
         out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data[data_index, :].reshape(1, self.dimentions), self.distance)
         rmu_index = out.argmin()  # get winner node index
@@ -254,13 +254,17 @@ class GSOM:
         # get winner node coordinates
         rmu_x = int(self.node_coordinate[rmu_index][0])
         rmu_y = int(self.node_coordinate[rmu_index][1])
+        
+        # Update all nodes using Gaussian neighborhood function
+        # SOM learning rule: wi(t+1) = wi(t) + η(t) × h(t) × (xj - wi(t))
+        # where η(t) is learning_rate, h(t) is Gaussian neighborhood function
 
-        # Update winner error
+        # Update winner error 
         error = data[data_index] - self.node_list[rmu_index]
         self.node_list[self.map[(rmu_x, rmu_y)]] = self.node_list[self.map[(rmu_x, rmu_y)]] + learning_rate * error
 
         # Get integer radius value
-        mask_size = round(radius)
+        mask_size = round(radius)        
 
         # Iterate over the winner node radius(neighbourhood)
         for i in range(rmu_x - mask_size, rmu_x + mask_size):
@@ -270,9 +274,10 @@ class GSOM:
                     # get error between winner and neighbour
                     error = self.node_list[rmu_index] - self.node_list[self.map[(i, j)]]
                     distance = (rmu_x - i) * (rmu_x - i) + (rmu_y - j) * (rmu_y - j)
+                    #Gaussian neighborhood function h(t) = exp(-distance^2 / (2 * sigma^2)) where sigma is the current neighborhood radius
                     eDistance = np.exp(-1.0 * distance / (2.0 * (radius * radius)))  # influence from distance
 
-                    # Update neighbour error
+                    # Update neighbour error using SOM weight update rule
                     self.node_list[self.map[(i, j)]] = self.node_list[self.map[(i, j)]] \
                                                        + learning_rate * eDistance * error
         return rmu_index, rmu_x, rmu_y, error_val
