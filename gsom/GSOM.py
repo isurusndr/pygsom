@@ -255,10 +255,9 @@ class GSOM:
         rmu_x = int(self.node_coordinate[rmu_index][0])
         rmu_y = int(self.node_coordinate[rmu_index][1])
         
-        # Update winner error 
-        # Original SOM error update rule: Ewinner​(t+1) = Ewinner​(t) + ∥Xj​ − Wwinner​∥
+        # Update winner weights 
         error = data[data_index] - self.node_list[rmu_index]
-        self.node_list[self.map[(rmu_x, rmu_y)]] = self.node_list[self.map[(rmu_x, rmu_y)]] + error
+        self.node_list[self.map[(rmu_x, rmu_y)]] = self.node_list[self.map[(rmu_x, rmu_y)]] + error * learning_rate
         
         # Update neighborhood using Gaussian neighborhood function
         # SOM learning rule: wi(t+1) = wi(t) + η(t) × h(t) × (xj - wi(t))
@@ -278,7 +277,7 @@ class GSOM:
                     #Gaussian neighborhood function h(t) = exp(-distance^2 / (2 * sigma^2)) where sigma is the current neighborhood radius
                     eDistance = np.exp(-1.0 * distance / (2.0 * (radius * radius)))  # influence from distance
 
-                    # Update neighbour error using SOM weight update rule
+                    # Update neighbour weights using SOM weight update rule
                     self.node_list[self.map[(i, j)]] = self.node_list[self.map[(i, j)]] \
                                                        + learning_rate * eDistance * error
         return rmu_index, rmu_x, rmu_y, error_val
@@ -293,10 +292,11 @@ class GSOM:
         for data_index in range(data.shape[0]):
             rmu_index, rmu_x, rmu_y, error_val = self.winner_identification_and_neighbourhood_update(data_index, data, radius, learning_rate)
 
-            # winner node weight update and grow
+            # winner node error update and grow 
+            # Original SOM error update rule: Ewinner​(t+1) = Ewinner​(t) + ∥Xj​ − Wwinner​∥
             self.node_errors[rmu_index] += error_val
             if self.node_errors[rmu_index] > self.groth_threshold:
-                self.adjust_wights(rmu_x, rmu_y, rmu_index)
+                self.adjust_wights(rmu_x, rmu_y, rmu_index) ### check here: is this leads to double weight update?
 
     def fit(self, data, training_iterations, smooth_iterations):
         """
