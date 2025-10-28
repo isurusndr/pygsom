@@ -267,9 +267,10 @@ class GSOM:
         # where η(t) is learning_rate, h(t) is Gaussian neighborhood function
 
         # Get integer radius value
-        mask_size = round(radius)        
+        mask_size = round(radius)
 
-        # Iterate over the winner node radius(neighbourhood)
+        ### TODO: This is the reactangular neighbourhood mask, change to circular
+        # Iterate over the winner node radius(neighbourhood) 
         for i in range(rmu_x - mask_size, rmu_x + mask_size):
             for j in range(rmu_y - mask_size, rmu_y + mask_size):
                 # Check neighbour coordinate in the map not winner coordinates
