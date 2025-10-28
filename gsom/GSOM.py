@@ -216,29 +216,32 @@ class GSOM:
             weights[weights > 1] = 1.0
             self.insert_new_node(x, y, weights)
 
-    def spread_wights(self, x, y):
+    def spread_error(self, x, y):
         leftx, lefty = x - 1, y
         rightx, righty = x + 1, y
         topx, topy = x, y + 1
         bottomx, bottomy = x, y - 1
-        self.node_errors[self.map[(x, y)]] = self.groth_threshold/2   #TODO check this value if different in Rashmika's
-                                                                    # version and paper version (paper t/2 Rashmika t)
-        self.node_errors[self.map[(leftx, lefty)]] *= (1 + self.FD)
-        self.node_errors[self.map[(rightx, righty)]] *= (1 + self.FD)
-        self.node_errors[self.map[(topx, topy)]] *= (1 + self.FD)
-        self.node_errors[self.map[(bottomx, bottomy)]] *= (1 + self.FD)
+        erorr = self.node_errors[self.map[(x, y)]]
+        self.node_errors[self.map[(x, y)]] =erorr/2   #make the winer error half
+        ##### TODO: Distribute halft of erro to neighbours radially using gussian. i.e. nearest get more error
+        
+        #distribute half of error to neighbours i.e. error of BMU will ripple outwards to its immediate neighbours
+        self.node_errors[self.map[(leftx, lefty)]] += erorr/(2*4)
+        self.node_errors[self.map[(rightx, righty)]] += erorr/(2*4)
+        self.node_errors[self.map[(topx, topy)]] += erorr/(2*4)
+        self.node_errors[self.map[(bottomx, bottomy)]] += erorr/(2*4)
 
     def adjust_wights(self, x, y, rmu_index):
         leftx, lefty = x - 1, y
         rightx, righty = x + 1, y
         topx, topy = x, y + 1
         bottomx, bottomy = x, y - 1
-        # Check all neighbours exist and spread the weights
+        # If the winner neuron has no neighbours, spread half of error is equally distributed to neighbours
         if (leftx, lefty) in self.map \
                 and (rightx, righty) in self.map \
                 and (topx, topy) in self.map \
                 and (bottomx, bottomy) in self.map:
-            self.spread_wights(x, y)
+            self.spread_error(x, y)
         else:
         # Grow new nodes for the four sides
             self.grow_node(x, y, leftx, lefty, 0)
