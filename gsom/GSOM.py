@@ -255,13 +255,14 @@ class GSOM:
         rmu_x = int(self.node_coordinate[rmu_index][0])
         rmu_y = int(self.node_coordinate[rmu_index][1])
         
-        # Update all nodes using Gaussian neighborhood function
+        # Update winner error 
+        # Original SOM error update rule: Ewinner​(t+1) = Ewinner​(t) + ∥Xj​ − Wwinner​∥
+        error = data[data_index] - self.node_list[rmu_index]
+        self.node_list[self.map[(rmu_x, rmu_y)]] = self.node_list[self.map[(rmu_x, rmu_y)]] + error
+        
+        # Update neighborhood using Gaussian neighborhood function
         # SOM learning rule: wi(t+1) = wi(t) + η(t) × h(t) × (xj - wi(t))
         # where η(t) is learning_rate, h(t) is Gaussian neighborhood function
-
-        # Update winner error 
-        error = data[data_index] - self.node_list[rmu_index]
-        self.node_list[self.map[(rmu_x, rmu_y)]] = self.node_list[self.map[(rmu_x, rmu_y)]] + learning_rate * error
 
         # Get integer radius value
         mask_size = round(radius)        
