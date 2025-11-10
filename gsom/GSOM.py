@@ -257,7 +257,7 @@ class GSOM:
                     weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx - 1, wy)
                 else:
                     weights = self._new_weights_for_new_node_one_older_neighbour(wx, wy)
-            # clip the wight between (0,1)
+            # clip the wight between (0,1). This is due to assumption that input data is normalized between (0,1)
             weights[weights < 0] = 0.0
             weights[weights > 1] = 1.0
             self.insert_new_node(x, y, weights)
@@ -267,25 +267,25 @@ class GSOM:
         rightx, righty = x + 1, y
         topx, topy = x, y + 1
         bottomx, bottomy = x, y - 1
-        erorr = self.node_errors[self.map[(x, y)]]
-        self.node_errors[self.map[(x, y)]] =erorr/2   #make the winer error half
+        bmu_erorr = self.node_errors[self.map[(x, y)]]
+        self.node_errors[self.map[(x, y)]] =bmu_erorr/2   #make the winer error half. i.e. ErrBMU(t+1) = ErrBMU(t)/2
         ##### TODO: Distribute halft of erro to neighbours radially using gussian. i.e. nearest get more error
         
         #distribute half of error to neighbours i.e. error of BMU will ripple outwards to its immediate neighbours
-        self.node_errors[self.map[(leftx, lefty)]] += erorr/(2*4)
-        self.node_errors[self.map[(rightx, righty)]] += erorr/(2*4)
-        self.node_errors[self.map[(topx, topy)]] += erorr/(2*4)
-        self.node_errors[self.map[(bottomx, bottomy)]] += erorr/(2*4)
+        # ErrNbr(t+1) = ErrNbr(t) + ErrBMU(t)/ (2*number_of_neighbours)
+        self.node_errors[self.map[(leftx, lefty)]] += bmu_erorr/(2*4)
+        self.node_errors[self.map[(rightx, righty)]] += bmu_erorr/(2*4)
+        self.node_errors[self.map[(topx, topy)]] += bmu_erorr/(2*4)
+        self.node_errors[self.map[(bottomx, bottomy)]] += bmu_erorr/(2*4)
 
-    def adjust_wights(self, x, y, rmu_index):
+    def grow_map_nodes(self, x, y, bmu_index):
         leftx, lefty = x - 1, y
         rightx, righty = x + 1, y
         topx, topy = x, y + 1
         bottomx, bottomy = x, y - 1
         ##### TODO: Update weights properly when using Mixed distance
         
-         
-        # If the winner neuron has no neighbours, spread half of error is equally distributed to neighbours
+        # If the winner neuron has neighbours, spread half of error is equally distributed to neighbours
         if (leftx, lefty) in self.map \
                 and (rightx, righty) in self.map \
                 and (topx, topy) in self.map \
@@ -297,44 +297,46 @@ class GSOM:
             self.grow_node(x, y, rightx, righty, 1)
             self.grow_node(x, y, topx, topy, 2)
             self.grow_node(x, y, bottomx, bottomy, 3)
-            self.node_errors[rmu_index] = self.groth_threshold/2 #TODO check the need of setting the error to zero after weight adaptation
+            # Update winner node error to half. i.e. ErrBMU(t+1) = ErrBMU(t)/2
+            bmu_erorr = self.node_errors[self.map[(x, y)]]
+            self.node_errors[self.map[(x, y)]] =bmu_erorr/2 
+            ##### TODO: Need to distribute half of erro to newly insrrted neiyghnuours. i.e. ErrNbr(t+1) = ErrBMU(t)/ (2*number_of_neighbours_inserted)
     
     def winner_identification_and_neighbourhood_update(self, data_index, data, radius, learning_rate):
         out = self._compute_distance(self.node_list[:self.node_count], data[data_index, :].reshape(1, self.dimentions))
-        
-        rmu_index = out.argmin()  # get winner node index
+        bmu_index = out.argmin()  # get winner node index
         error_val = out.min()
         # get winner node coordinates
-        rmu_x = int(self.node_coordinate[rmu_index][0])
-        rmu_y = int(self.node_coordinate[rmu_index][1])
-        
-        # Update winner weights 
-        error = data[data_index] - self.node_list[rmu_index]
-        self.node_list[self.map[(rmu_x, rmu_y)]] = self.node_list[self.map[(rmu_x, rmu_y)]] + error * learning_rate
+        bmu_x = int(self.node_coordinate[bmu_index][0])
+        bmu_y = int(self.node_coordinate[bmu_index][1])
         
         # Update neighborhood using Gaussian neighborhood function
         # SOM learning rule: wi(t+1) = wi(t) + η(t) × h(t) × (xj - wi(t))
         # where η(t) is learning_rate, h(t) is Gaussian neighborhood function
-
+                
+        # Update winner weights 
+        diff = data[data_index] - self.node_list[bmu_index]
+        self.node_list[self.map[(bmu_x, bmu_y)]] = self.node_list[self.map[(bmu_x, bmu_y)]] + diff * learning_rate # follows SOM weight update rule
+        
         # Get integer radius value
         mask_size = round(radius)
 
         ### TODO: This is the reactangular neighbourhood mask, change to circular
         # Iterate over the winner node radius(neighbourhood) 
-        for i in range(rmu_x - mask_size, rmu_x + mask_size):
-            for j in range(rmu_y - mask_size, rmu_y + mask_size):
+        for i in range(bmu_x - mask_size, bmu_x + mask_size):
+            for j in range(bmu_y - mask_size, bmu_y + mask_size):
                 # Check neighbour coordinate in the map not winner coordinates
-                if (i, j) in self.map and (i != rmu_x and j != rmu_y):
+                if (i, j) in self.map and (i != bmu_x and j != bmu_y):
                     # get error between winner and neighbour
-                    error = self.node_list[rmu_index] - self.node_list[self.map[(i, j)]]
-                    distance = (rmu_x - i) * (rmu_x - i) + (rmu_y - j) * (rmu_y - j)
+                    diff = self.node_list[bmu_index] - self.node_list[self.map[(i, j)]]
+                    distance = (bmu_x - i) * (bmu_x - i) + (bmu_y - j) * (bmu_y - j)
                     #Gaussian neighborhood function h(t) = exp(-distance^2 / (2 * sigma^2)) where sigma is the current neighborhood radius
-                    eDistance = np.exp(-1.0 * distance / (2.0 * (radius * radius)))  # influence from distance
+                    neighborhood_fn = np.exp(-1.0 * distance / (2.0 * (radius * radius)))  # influence from distance
 
                     # Update neighbour weights using SOM weight update rule
                     self.node_list[self.map[(i, j)]] = self.node_list[self.map[(i, j)]] \
-                                                       + learning_rate * eDistance * error
-        return rmu_index, rmu_x, rmu_y, error_val
+                                                       + learning_rate * neighborhood_fn * diff
+        return bmu_index, bmu_x, bmu_y, error_val
 
     def smooth(self, data, radius, learning_rate):
         # Iterate all data points
@@ -344,13 +346,13 @@ class GSOM:
     def grow(self, data, radius, learning_rate):
         # Iterate all data points
         for data_index in range(data.shape[0]):
-            rmu_index, rmu_x, rmu_y, error_val = self.winner_identification_and_neighbourhood_update(data_index, data, radius, learning_rate)
+            bmu_index, bmu_x, bmu_y, error_val = self.winner_identification_and_neighbourhood_update(data_index, data, radius, learning_rate)
 
             # winner node error update and grow 
             # Original SOM error update rule: Ewinner​(t+1) = Ewinner​(t) + ∥Xj​ − Wwinner​∥
-            self.node_errors[rmu_index] += error_val
-            if self.node_errors[rmu_index] > self.groth_threshold:
-                self.adjust_wights(rmu_x, rmu_y, rmu_index) ### check here: is this leads to double weight update?
+            self.node_errors[bmu_index] += error_val
+            if self.node_errors[bmu_index] > self.groth_threshold:
+                self.grow_map_nodes(bmu_x, bmu_y, bmu_index) ### check here: is this leads to double weight update?
 
     def fit(self, data, training_iterations, smooth_iterations):
         """
