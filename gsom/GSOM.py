@@ -211,7 +211,7 @@ class GSOM:
                     weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx - 1, wy)
                 else:
                     weights = self._new_weights_for_new_node_one_older_neighbour(wx, wy)
-            # clip the wight between (0,1)
+            # clip the wight between (0,1). This is due to assumption that input data is normalized between (0,1)
             weights[weights < 0] = 0.0
             weights[weights > 1] = 1.0
             self.insert_new_node(x, y, weights)
@@ -221,22 +221,23 @@ class GSOM:
         rightx, righty = x + 1, y
         topx, topy = x, y + 1
         bottomx, bottomy = x, y - 1
-        erorr = self.node_errors[self.map[(x, y)]]
-        self.node_errors[self.map[(x, y)]] =erorr/2   #make the winer error half
+        bmu_erorr = self.node_errors[self.map[(x, y)]]
+        self.node_errors[self.map[(x, y)]] =bmu_erorr/2   #make the winer error half. i.e. ErrBMU(t+1) = ErrBMU(t)/2
         ##### TODO: Distribute halft of erro to neighbours radially using gussian. i.e. nearest get more error
         
         #distribute half of error to neighbours i.e. error of BMU will ripple outwards to its immediate neighbours
-        self.node_errors[self.map[(leftx, lefty)]] += erorr/(2*4)
-        self.node_errors[self.map[(rightx, righty)]] += erorr/(2*4)
-        self.node_errors[self.map[(topx, topy)]] += erorr/(2*4)
-        self.node_errors[self.map[(bottomx, bottomy)]] += erorr/(2*4)
+        # ErrNbr(t+1) = ErrNbr(t) + ErrBMU(t)/ (2*number_of_neighbours)
+        self.node_errors[self.map[(leftx, lefty)]] += bmu_erorr/(2*4)
+        self.node_errors[self.map[(rightx, righty)]] += bmu_erorr/(2*4)
+        self.node_errors[self.map[(topx, topy)]] += bmu_erorr/(2*4)
+        self.node_errors[self.map[(bottomx, bottomy)]] += bmu_erorr/(2*4)
 
     def grow_map_nodes(self, x, y, bmu_index):
         leftx, lefty = x - 1, y
         rightx, righty = x + 1, y
         topx, topy = x, y + 1
         bottomx, bottomy = x, y - 1
-        # If the winner neuron has no neighbours, spread half of error is equally distributed to neighbours
+        # If the winner neuron has neighbours, spread half of error is equally distributed to neighbours
         if (leftx, lefty) in self.map \
                 and (rightx, righty) in self.map \
                 and (topx, topy) in self.map \
@@ -248,7 +249,10 @@ class GSOM:
             self.grow_node(x, y, rightx, righty, 1)
             self.grow_node(x, y, topx, topy, 2)
             self.grow_node(x, y, bottomx, bottomy, 3)
-            self.node_errors[bmu_index] = self.groth_threshold/2 #TODO check the need of setting the error to zero after weight adaptation
+            # Update winner node error to half. i.e. ErrBMU(t+1) = ErrBMU(t)/2
+            bmu_erorr = self.node_errors[self.map[(x, y)]]
+            self.node_errors[self.map[(x, y)]] =bmu_erorr/2 
+            ##### TODO: Need to distribute half of erro to newly insrrted neiyghnuours. i.e. ErrNbr(t+1) = ErrBMU(t)/ (2*number_of_neighbours_inserted)
     
     def winner_identification_and_neighbourhood_update(self, data_index, data, radius, learning_rate):
         out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data[data_index, :].reshape(1, self.dimentions), self.distance)
@@ -296,9 +300,6 @@ class GSOM:
         for data_index in range(data.shape[0]):
             bmu_index, bmu_x, bmu_y, error_val = self.winner_identification_and_neighbourhood_update(data_index, data, radius, learning_rate)
 
-        # Another approch is ErrBMU(t+1) = ErrBMU(t)/2
-        # ErrNbr(t+1) = ErrNbr(t) + ErrBMU(t)/ (2*number_of_neighbours)
-        
             # winner node error update and grow 
             # Original SOM error update rule: Ewinner​(t+1) = Ewinner​(t) + ∥Xj​ − Wwinner​∥
             self.node_errors[bmu_index] += error_val
