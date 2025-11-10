@@ -10,8 +10,8 @@ data_filename = "example/data/zoo.txt".replace('\\', '/')
 
 class GSOM:
 
-    def __init__(self, spred_factor, dimensions, distance='euclidean', initialize='random', learning_rate=0.3,
-                 smooth_learning_factor=0.8,
+    def __init__(self, spred_factor, dimensions, distance='mixed', categorical_indices=None,
+                 initialize='random', learning_rate=0.3, smooth_learning_factor=0.8,
                  max_radius=6, FD=0.1, r=3.8, alpha=0.9, initial_node_size=30000):
         """
         GSOM structure:
@@ -52,13 +52,59 @@ class GSOM:
         self.predictive = None  # Keep the prediction of the next sequence value (HTM predictive state)
         self.active = None  # Keep the activation of the current sequence value (HTM active state)
         self.sequence_weights = None  # Sequence weight matrix. This has the dimensions node count*column height
-
-
+        
+        # Mixed-type data support
+        self.categorical_indices = categorical_indices if categorical_indices is not None else []
+        self.numerical_indices = [i for i in range(dimensions) if i not in self.categorical_indices]
+        
     def initialize_GSOM(self):
         self.insert_node_with_weights(1, 1)
         self.insert_node_with_weights(1, 0)
         self.insert_node_with_weights(0, 1)
         self.insert_node_with_weights(0, 0)
+        
+    def _mixed_distance(self, X, Y):
+        """
+        Compute hybrid distance: Hamming for categorical + Euclidean for numerical
+        :param X: matrix of shape (n_samples, n_features)
+        :param Y: matrix of shape (m_samples, n_features)
+        :return: distance matrix of shape (n_samples, m_samples)
+        """
+        n_samples = X.shape[0]
+        m_samples = Y.shape[0]
+        distances = np.zeros((n_samples, m_samples))
+        
+        # Compute Euclidean distance for numerical features
+        if len(self.numerical_indices) > 0:
+            X_num = X[:, self.numerical_indices]
+            Y_num = Y[:, self.numerical_indices]
+            num_dist = scipy.spatial.distance.cdist(X_num, Y_num, 'euclidean')
+        else:
+            num_dist = 0
+        
+        # Compute Hamming distance for categorical features
+        if len(self.categorical_indices) > 0:
+            X_cat = X[:, self.categorical_indices]
+            Y_cat = Y[:, self.categorical_indices]
+            # Hamming distance returns proportion of differing features
+            # Multiply by number of categorical features to get count
+            cat_dist = scipy.spatial.distance.cdist(X_cat, Y_cat, 'hamming') * len(self.categorical_indices)
+        else:
+            cat_dist = 0
+        
+        # Combine distances
+        distances = num_dist + cat_dist
+        
+        return distances
+
+    def _compute_distance(self, X, Y):
+        """
+        Compute distance based on distance type
+        """
+        if self.distance == 'mixed':
+            return self._mixed_distance(X, Y)
+        else:
+            return scipy.spatial.distance.cdist(X, Y, self.distance)
 
     def insert_new_node(self, x, y, weights):
         if self.node_count > self.initial_node_size:
@@ -236,6 +282,9 @@ class GSOM:
         rightx, righty = x + 1, y
         topx, topy = x, y + 1
         bottomx, bottomy = x, y - 1
+        ##### TODO: Update weights properly when using Mixed distance
+        
+         
         # If the winner neuron has no neighbours, spread half of error is equally distributed to neighbours
         if (leftx, lefty) in self.map \
                 and (rightx, righty) in self.map \
@@ -251,7 +300,8 @@ class GSOM:
             self.node_errors[rmu_index] = self.groth_threshold/2 #TODO check the need of setting the error to zero after weight adaptation
     
     def winner_identification_and_neighbourhood_update(self, data_index, data, radius, learning_rate):
-        out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data[data_index, :].reshape(1, self.dimentions), self.distance)
+        out = self._compute_distance(self.node_list[:self.node_count], data[data_index, :].reshape(1, self.dimentions))
+        
         rmu_index = out.argmin()  # get winner node index
         error_val = out.min()
         # get winner node coordinates
@@ -327,7 +377,7 @@ class GSOM:
 
             self.smooth(data, radius_exp, current_learning_rate)
         # Identify winners
-        out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data, self.distance)
+        out = self._compute_distance(self.node_list[:self.node_count], data)
         return out.argmin(axis=0)
 
     def predict(self, data, index_col, label_col=None):
@@ -352,7 +402,7 @@ class GSOM:
         data_n = data[weight_columns].to_numpy()
         data_out = pd.DataFrame(data[output_columns])
         # Identify winners
-        out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data_n, self.distance)
+        out = self._compute_distance(self.node_list[:self.node_count], data_n)
         data_out["output"] = out.argmin(axis=0)
 
         grp_output =data_out.groupby("output")
