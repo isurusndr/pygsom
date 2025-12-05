@@ -248,8 +248,10 @@ class GSOM:
             self.grow_node(x, y, rightx, righty, 1)
             self.grow_node(x, y, topx, topy, 2)
             self.grow_node(x, y, bottomx, bottomy, 3)
-            self.node_errors[rmu_index] = self.groth_threshold/2 #TODO check the need of setting the error to zero after weight adaptation
-    
+            # Distribute error to all existing neighbors (including newly added ones)
+            self.spread_error(x, y)
+            #self.node_errors[rmu_index] = self.groth_threshold/2 #TODO check the need of setting the error to zero after weight adaptation
+
     def winner_identification_and_neighbourhood_update(self, data_index, data, radius, learning_rate):
         out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data[data_index, :].reshape(1, self.dimentions), self.distance)
         rmu_index = out.argmin()  # get winner node index
