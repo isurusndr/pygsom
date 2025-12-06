@@ -231,12 +231,12 @@ class GSOM:
         self.node_errors[self.map[(topx, topy)]] += erorr/(2*4)
         self.node_errors[self.map[(bottomx, bottomy)]] += erorr/(2*4)
 
-    def adjust_wights(self, x, y, rmu_index):
+    def grow_and_error_distribute(self, x, y, rmu_index):
         leftx, lefty = x - 1, y
         rightx, righty = x + 1, y
         topx, topy = x, y + 1
         bottomx, bottomy = x, y - 1
-        # If the winner neuron has no neighbours, spread half of error is equally distributed to neighbours
+        # Check if all four neighbors exist in the 
         if (leftx, lefty) in self.map \
                 and (rightx, righty) in self.map \
                 and (topx, topy) in self.map \
@@ -302,7 +302,7 @@ class GSOM:
             # Original SOM error update rule: Ewinner​(t+1) = Ewinner​(t) + ∥Xj​ − Wwinner​∥
             self.node_errors[rmu_index] += error_val
             if self.node_errors[rmu_index] > self.groth_threshold:
-                self.adjust_wights(rmu_x, rmu_y, rmu_index) ### check here: is this leads to double weight update?
+                self.grow_and_error_distribute(rmu_x, rmu_y, rmu_index) ### check here: is this leads to double weight update?
 
     def fit(self, data, training_iterations, smooth_iterations):
         """
