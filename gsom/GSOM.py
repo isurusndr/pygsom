@@ -231,7 +231,7 @@ class GSOM:
         self.node_errors[self.map[(topx, topy)]] += erorr/(2*4)
         self.node_errors[self.map[(bottomx, bottomy)]] += erorr/(2*4)
 
-    def grow_and_error_distribute(self, x, y, rmu_index):
+    def grow_and_error_distribute(self, x, y, bmu_index):
         leftx, lefty = x - 1, y
         rightx, righty = x + 1, y
         topx, topy = x, y + 1
@@ -250,26 +250,27 @@ class GSOM:
             self.grow_node(x, y, bottomx, bottomy, 3)
             # Distribute error to all existing neighbors (including newly added ones).
             self.spread_error(x, y)
-            #self.node_errors[rmu_index] = self.groth_threshold/2 #TODO check the need of setting the error to zero after weight adaptation
+            #self.node_errors[bmu_index] = self.groth_threshold/2 #TODO check the need of setting the error to zero after weight adaptation
             
     def gussian_neighbourhood_function(self, distance, sigma):
          #Gaussian neighborhood function h(t) = exp(-distance^2 / (2 * sigma^2)) where sigma is the current neighborhood radius
         return np.exp(-1.0 * distance / (2.0 * (sigma * sigma)))
     
     def lattice_distance(self, coord1, coord2):
+        # Euclidean distance between two coordinates in the lattice
         return math.sqrt((coord1[0] - coord2[0])**2 + (coord1[1] - coord2[1])**2)  
 
     def winner_identification_and_weight_adaptation(self, data_index, data, radius, learning_rate):
         out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data[data_index, :].reshape(1, self.dimentions), self.distance)
-        rmu_index = out.argmin()  # get winner node index
+        bmu_index = out.argmin()  # get winner node index
         error_val = out.min()
         # get winner node coordinates
-        rmu_x = int(self.node_coordinate[rmu_index][0])
-        rmu_y = int(self.node_coordinate[rmu_index][1])
+        bmu_x = int(self.node_coordinate[bmu_index][0])
+        bmu_y = int(self.node_coordinate[bmu_index][1])
         
         # Update winner weights 
-        error = data[data_index] - self.node_list[rmu_index]
-        self.node_list[self.map[(rmu_x, rmu_y)]] = self.node_list[self.map[(rmu_x, rmu_y)]] + error * learning_rate
+        error = data[data_index] - self.node_list[bmu_index]
+        self.node_list[self.map[(bmu_x, bmu_y)]] = self.node_list[self.map[(bmu_x, bmu_y)]] + error * learning_rate
         
         # Update neighborhood using Gaussian neighborhood function
         # SOM learning rule: wi(t+1) = wi(t) + η(t) × h(t) × (xj - wi(t))
@@ -280,18 +281,18 @@ class GSOM:
 
         ### TODO: This is the reactangular neighbourhood mask, change to circular
         # Iterate over the winner node radius(neighbourhood) 
-        for i in range(rmu_x - mask_size, rmu_x + mask_size):
-            for j in range(rmu_y - mask_size, rmu_y + mask_size):
+        for i in range(bmu_x - mask_size, bmu_x + mask_size):
+            for j in range(bmu_y - mask_size, bmu_y + mask_size):
                 # Check neighbour coordinate in the map not winner coordinates
-                if (i, j) in self.map and (i != rmu_x and j != rmu_y):
+                if (i, j) in self.map and (i != bmu_x and j != bmu_y):
                     # get error between winner and neighbour
-                    error = self.node_list[rmu_index] - self.node_list[self.map[(i, j)]]
-                    distance = self.lattice_distance((rmu_x, rmu_y), (i, j)) #lattice distances
+                    error = self.node_list[bmu_index] - self.node_list[self.map[(i, j)]]
+                    distance = self.lattice_distance((bmu_x, bmu_y), (i, j)) #lattice distances
                     eDistance = self.gussian_neighbourhood_function(distance, radius)  # influence from distance
                     # Update neighbour weights using SOM weight update rule
                     self.node_list[self.map[(i, j)]] = self.node_list[self.map[(i, j)]] \
                                                        + learning_rate * eDistance * error
-        return rmu_index, rmu_x, rmu_y, error_val
+        return bmu_index, bmu_x, bmu_y, error_val
 
     def smooth(self, data, radius, learning_rate):
         # Iterate all data points
@@ -301,13 +302,13 @@ class GSOM:
     def grow(self, data, radius, learning_rate):
         # Iterate all data points
         for data_index in range(data.shape[0]):
-            rmu_index, rmu_x, rmu_y, error_val = self.winner_identification_and_weight_adaptation(data_index, data, radius, learning_rate)
+            bmu_index, bmu_x, bmu_y, error_val = self.winner_identification_and_weight_adaptation(data_index, data, radius, learning_rate)
 
             # winner node error update and grow 
             # Original SOM error update rule: Ewinner​(t+1) = Ewinner​(t) + ∥Xj​ − Wwinner​∥
-            self.node_errors[rmu_index] += error_val
-            if self.node_errors[rmu_index] > self.groth_threshold:
-                self.grow_and_error_distribute(rmu_x, rmu_y, rmu_index) ### check here: is this leads to double weight update?
+            self.node_errors[bmu_index] += error_val
+            if self.node_errors[bmu_index] > self.groth_threshold:
+                self.grow_and_error_distribute(bmu_x, bmu_y, bmu_index) ### check here: is this leads to double weight update?
 
     def fit(self, data, training_iterations, smooth_iterations):
         """
