@@ -250,7 +250,7 @@ class GSOM:
             self.grow_node(x, y, bottomx, bottomy, 3)
             # Distribute error to all existing neighbors (including newly added ones).
             self.spread_error(x, y)
-            #self.node_errors[bmu_index] = self.groth_threshold/2 #TODO check the need of setting the error to zero after weight adaptation
+            #self.node_errors[bmu_index] = self.groth_threshold/2 
             
     def gussian_neighbourhood_function(self, distance, sigma):
          #Gaussian neighborhood function h(t) = exp(-distance^2 / (2 * sigma^2)) where sigma is the current neighborhood radius
@@ -259,6 +259,19 @@ class GSOM:
     def lattice_distance(self, coord1, coord2):
         # Euclidean distance between two coordinates in the lattice
         return math.sqrt((coord1[0] - coord2[0])**2 + (coord1[1] - coord2[1])**2)  
+    
+    def get_lattice_neighbors(self, bmu_coord, radius):
+        #this is a circular neighbourhood mask
+        neighbors = []
+        # Iterate over the winner node radius(neighbourhood) in the lattice
+        for i in range(bmu_coord[0] - radius, bmu_coord[0] + radius + 1):
+            for j in range(bmu_coord[1] - radius, bmu_coord[1] + radius + 1):
+                 # Check neighbour coordinate in the map not winner coordinates
+                if (i, j) in self.map and (i, j) != (bmu_coord[0], bmu_coord[1]):
+                    distance = self.lattice_distance((bmu_coord[0], bmu_coord[1]), (i, j))
+                    if distance <= radius:
+                        neighbors.append({'coord': (i, j), 'distance': distance})
+        return neighbors
 
     def winner_identification_and_weight_adaptation(self, data_index, data, radius, learning_rate):
         out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data[data_index, :].reshape(1, self.dimentions), self.distance)
@@ -278,20 +291,16 @@ class GSOM:
 
         # Get integer radius value
         mask_size = round(radius)
+        neighbors = self.get_lattice_neighbors((bmu_x, bmu_y), mask_size)
+        #iterate over the neighbors within the radius
+        for neighbor in neighbors:
+            i, j = neighbor['coord']
+            distance = neighbor['distance']
+            error = self.node_list[bmu_index] - self.node_list[self.map[(i, j)]] # get error between winner and neighbour
+            eDistance = self.gussian_neighbourhood_function(distance, radius)  # influence from distance
+            # Update neighbour weights using SOM weight update rule
+            self.node_list[self.map[(i, j)]] = self.node_list[self.map[(i, j)]] + learning_rate * eDistance * error
 
-        ### TODO: This is the reactangular neighbourhood mask, change to circular
-        # Iterate over the winner node radius(neighbourhood) 
-        for i in range(bmu_x - mask_size, bmu_x + mask_size):
-            for j in range(bmu_y - mask_size, bmu_y + mask_size):
-                # Check neighbour coordinate in the map not winner coordinates
-                if (i, j) in self.map and (i != bmu_x and j != bmu_y):
-                    # get error between winner and neighbour
-                    error = self.node_list[bmu_index] - self.node_list[self.map[(i, j)]]
-                    distance = self.lattice_distance((bmu_x, bmu_y), (i, j)) #lattice distances
-                    eDistance = self.gussian_neighbourhood_function(distance, radius)  # influence from distance
-                    # Update neighbour weights using SOM weight update rule
-                    self.node_list[self.map[(i, j)]] = self.node_list[self.map[(i, j)]] \
-                                                       + learning_rate * eDistance * error
         return bmu_index, bmu_x, bmu_y, error_val
 
     def smooth(self, data, radius, learning_rate):
