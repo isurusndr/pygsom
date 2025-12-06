@@ -219,16 +219,13 @@ class GSOM:
     def spread_error(self, x, y):
         erorr = self.node_errors[self.map[(x, y)]]
         self.node_errors[self.map[(x, y)]] =erorr/2   #make the winer error half
-        ##### TODO: Distribute halft of erro to neighbours radially using gussian. i.e. nearest get more error
         
         #distribute half of error to neighbours i.e. error of BMU will ripple outwards to its immediate neighbours
         neighbors = self.get_lattice_neighbors((x, y), 1)
-        total_influence = sum([self.gussian_neighbourhood_function(n['distance'], 1) for n in neighbors])
-        for neighbor in neighbors:
-            i, j = neighbor['coord']
-            distance = neighbor['distance']
-            influence = self.gussian_neighbourhood_function(distance, 1)  # influence from distance
-            self.node_errors[self.map[(i, j)]] += erorr/2 * (influence / total_influence)
+        total_influence = sum([self.gussian_neighbourhood_function(n[1], 1) for n in neighbors])
+        for (i, j), distance in neighbors:
+            influence_factor = self.gussian_neighbourhood_function(distance, 1)/ total_influence  # influence from distance
+            self.node_errors[self.map[(i, j)]] += (erorr/2) * influence_factor
 
     def grow_and_error_distribute(self, x, y, bmu_index):
         leftx, lefty = x - 1, y
@@ -269,7 +266,7 @@ class GSOM:
                 if (i, j) in self.map and (i, j) != (bmu_coord[0], bmu_coord[1]):
                     distance = self.lattice_distance((bmu_coord[0], bmu_coord[1]), (i, j))
                     if distance <= radius:
-                        neighbors.append({'coord': (i, j), 'distance': distance})
+                        neighbors.append(((i, j), distance))
         return neighbors
 
     def winner_identification_and_weight_adaptation(self, data_index, data, radius, learning_rate):
@@ -292,9 +289,7 @@ class GSOM:
         mask_size = round(radius)
         neighbors = self.get_lattice_neighbors((bmu_x, bmu_y), mask_size)
         #iterate over the neighbors within the radius
-        for neighbor in neighbors:
-            i, j = neighbor['coord']
-            distance = neighbor['distance']
+        for (i, j), distance in neighbors:
             error = self.node_list[bmu_index] - self.node_list[self.map[(i, j)]] # get error between winner and neighbour
             eDistance = self.gussian_neighbourhood_function(distance, radius)  # influence from distance
             # Update neighbour weights using SOM weight update rule
