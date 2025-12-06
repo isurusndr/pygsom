@@ -217,19 +217,18 @@ class GSOM:
             self.insert_new_node(x, y, weights)
 
     def spread_error(self, x, y):
-        leftx, lefty = x - 1, y
-        rightx, righty = x + 1, y
-        topx, topy = x, y + 1
-        bottomx, bottomy = x, y - 1
         erorr = self.node_errors[self.map[(x, y)]]
         self.node_errors[self.map[(x, y)]] =erorr/2   #make the winer error half
         ##### TODO: Distribute halft of erro to neighbours radially using gussian. i.e. nearest get more error
         
         #distribute half of error to neighbours i.e. error of BMU will ripple outwards to its immediate neighbours
-        self.node_errors[self.map[(leftx, lefty)]] += erorr/(2*4)
-        self.node_errors[self.map[(rightx, righty)]] += erorr/(2*4)
-        self.node_errors[self.map[(topx, topy)]] += erorr/(2*4)
-        self.node_errors[self.map[(bottomx, bottomy)]] += erorr/(2*4)
+        neighbors = self.get_lattice_neighbors((x, y), 1)
+        total_influence = sum([self.gussian_neighbourhood_function(n['distance'], 1) for n in neighbors])
+        for neighbor in neighbors:
+            i, j = neighbor['coord']
+            distance = neighbor['distance']
+            influence = self.gussian_neighbourhood_function(distance, 1)  # influence from distance
+            self.node_errors[self.map[(i, j)]] += erorr/2 * (influence / total_influence)
 
     def grow_and_error_distribute(self, x, y, bmu_index):
         leftx, lefty = x - 1, y
