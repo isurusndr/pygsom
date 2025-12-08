@@ -58,6 +58,17 @@ Plot the 2D map: need to give the output of predict function with label column (
 gsom.plot(map_points, <name column name/label column name>, gsom_map=<gsom_map>)
 ```
 
+## Modifications
+
+```
+Original publication:
+* Alahakoon, D., Halgamuge, S. K., & Srinivasan, B. (2000). Dynamic self-organizing maps with controlled growth for knowledge discovery. IEEE Transactions on neural networks, 11(3), 601-614.
+
+We have applied a few modifications on the original algorithm as specified in the following publications.
+* Vasighi, M., & Amini, H. (2017). A directed batch growing approach to enhance the topology preservation of self-organizing map. Applied Soft Computing, 55, 424-435.
+
+```
+
 ## Citing pygsom
 
 If you use `pygsom`, please cite the following paper:
