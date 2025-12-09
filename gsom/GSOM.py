@@ -308,7 +308,7 @@ class GSOM_Mixed:
 
     def gussian_neighbourhood_function(self, distance, sigma):
         """Gaussian neighborhood function h(t) = exp(-distance^2 / (2 * sigma^2))"""
-        return np.exp(-1.0 * distance / (2.0 * (sigma * sigma)))
+        return np.exp(-1.0 * distance**2 / (2.0 * (sigma * sigma)))
     
     def lattice_distance(self, coord1, coord2):
         """Euclidean distance between two coordinates in the lattice"""
