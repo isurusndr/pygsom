@@ -82,6 +82,8 @@ class GSOM:
         return self.ALPHA * (1 - (self.R / self.node_count)) * prev_learning_rate
 
     def _get_neighbourhood_radius(self, total_iteration, iteration):
+        #alternative decay function for radius
+        # radius(e+1) = 1+ (radius(0)-1)*(1 - e/E) whre E is total iterations, e is current iteration
         time_constant = total_iteration / math.log(self.max_radius)
         return self.max_radius * math.exp(- iteration / time_constant)
 
@@ -216,31 +218,34 @@ class GSOM:
             weights[weights > 1] = 1.0
             self.insert_new_node(x, y, weights)
             
-    def get_lattice_neighbors(self, x, y, radius):
+    def _get_lattice_neighbors(self, x, y, radius):
         #this is a circular neighbourhood mask
         neighbors = []
-        radius_threshold = radius**2
+        # Or else we can use manhattan distance for square neighbourhood
         # Iterate over the winner node radius(neighbourhood) in the lattice
-        for i in range(x - radius -1, x + radius + 1):
-            for j in range(y - radius -1, y + radius + 1):
+        for i in range(x - radius, x + radius):
+            for j in range(y - radius, y + radius):
                  # Check neighbour coordinate in the map not winner coordinates
                 if (i, j) in self.map and (i, j) != (x, y):
-                    distancesq = (x - i)**2 + (y - j)**2
-                    if distancesq <= radius_threshold:
+                    if abs(i - x) + abs(j - y) <= radius: #manhattan distance for square(diamond) neighbourhood
+                        distancesq = (x - i)**2 + (y - j)**2    
+                        #distancesq = (abs(i - x) + abs(j - y))**2  #manhattan distance squared          
                         neighbors.append((i, j, distancesq))
+                    
         return neighbors
 
-    def spread_error(self, x, y):
+    def _spread_error(self, x, y):        
+        leftx, lefty = x - 1, y
+        rightx, righty = x + 1, y
+        topx, topy = x, y + 1
+        bottomx, bottomy = x, y - 1
         erorr = self.node_errors[self.map[(x, y)]]
-        self.node_errors[self.map[(x, y)]] =erorr/2   #make the winer error half
-        
-        radius = 1
+        self.node_errors[self.map[(x, y)]] =erorr/2   #make the winer error half        
         #distribute half of error to neighbours i.e. error of BMU will ripple outwards to its immediate neighbours
-        neighbors = self.get_lattice_neighbors(x, y, radius)
-        total_influence = sum([np.exp(-1.0 * n[2] / (2.0 * (radius * radius))) for n in neighbors])
-        for (i, j, dist_sq) in neighbors:
-            influence_factor = np.exp(-1.0 * dist_sq / (2.0 * (radius * radius)))/ total_influence  # influence from distance
-            self.node_errors[self.map[(i, j)]] += (erorr/2) * influence_factor
+        self.node_errors[self.map[(leftx, lefty)]] += erorr/(2*4)
+        self.node_errors[self.map[(rightx, righty)]] += erorr/(2*4)
+        self.node_errors[self.map[(topx, topy)]] += erorr/(2*4)
+        self.node_errors[self.map[(bottomx, bottomy)]] += erorr/(2*4)
 
     def grow_and_error_distribute(self, x, y, bmu_index):
         leftx, lefty = x - 1, y
@@ -252,16 +257,16 @@ class GSOM:
                 and (rightx, righty) in self.map \
                 and (topx, topy) in self.map \
                 and (bottomx, bottomy) in self.map:
-            self.spread_error(x, y)
+            self._spread_error(x, y)
         else:
         # Grow new nodes for the four sides
             self.grow_node(x, y, leftx, lefty, 0)
             self.grow_node(x, y, rightx, righty, 1)
             self.grow_node(x, y, topx, topy, 2)
             self.grow_node(x, y, bottomx, bottomy, 3)
-            # Distribute error to all existing neighbors (including newly added ones).
-            self.spread_error(x, y)
-            #self.node_errors[bmu_index] = self.groth_threshold/2 
+            # Set the error of node to half of the growth threshold
+            self.node_errors[bmu_index] = self.groth_threshold/2 
+            #self.node_errors[bmu_index] -= self.groth_threshold
 
     def winner_identification_and_weight_adaptation(self, data_index, data, radius, learning_rate):
         out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data[data_index, :].reshape(1, self.dimentions), self.distance)
@@ -281,10 +286,10 @@ class GSOM:
 
         # Get integer radius value
         mask_size = round(radius)
-        neighbors = self.get_lattice_neighbors(bmu_x, bmu_y, mask_size)
+        neighbors = self._get_lattice_neighbors(bmu_x, bmu_y, mask_size)
         #iterate over the neighbors within the radius
         for i, j, dist_sq in neighbors:
-            error = self.node_list[bmu_index] - self.node_list[self.map[(i, j)]] # get error between winner and neighbour
+            error = data[data_index] - self.node_list[self.map[(i, j)]] # get error between data point and neighbour
             #Gaussian neighborhood function h(t) = exp(-distance^2 / (2 * sigma^2)) where sigma is the current neighborhood radius
             eDistance = np.exp(-1.0 * dist_sq / (2.0 * (radius * radius)))  # influence from distance
             # Update neighbour weights using SOM weight update rule
@@ -323,7 +328,8 @@ class GSOM:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
 
             self.grow(data, radius_exp, current_learning_rate)
-
+            np.random.shuffle(data) # shuffle data rows for next iteration. 
+            
         # smoothing iterations
         current_learning_rate = self.learning_rate * self.smooth_learning_factor
         for i in tqdm(range(smooth_iterations)):
@@ -331,7 +337,9 @@ class GSOM:
             if i != 0:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
 
-            self.smooth(data, radius_exp, current_learning_rate)
+            self.smooth(data, radius_exp, current_learning_rate)            
+            np.random.shuffle(data) # shuffle data rows for next iteration. 
+            
         # Identify winners
         out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data, self.distance)
         return out.argmin(axis=0)

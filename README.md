@@ -66,6 +66,10 @@ Original publication:
 
 We have applied a few modifications on the original algorithm as specified in the following publications.
 * Vasighi, M., & Amini, H. (2017). A directed batch growing approach to enhance the topology preservation of self-organizing map. Applied Soft Computing, 55, 424-435.
+* Tai, W. S., & Hsu, C. C. (2010, August). A growing mixed self-organizing map. In 2010 Sixth International Conference on Natural Computation (Vol. 2, pp. 986-990). IEEE.
+* Hsu, A., & Halgamuge, S. K. (2008). Class structure visualization with semi-supervised growing self-organizing maps. Neurocomputing, 71(16-18), 3124-3130.
+* Cao, M., Li, A., Fang, Q., Kaufmann, E., & Kröger, B. J. (2014). Interconnected growing self-organizing maps for auditory and semantic acquisition modeling. Frontiers in psychology, 5, 236.
+* See (dynamic learning rate depending on the number of nodes in the map):Cao, M., Li, A., Fang, Q., Kaufmann, E., & Kröger, B. J. (2014). Interconnected growing self-organizing maps for auditory and semantic acquisition modeling. Frontiers in psychology, 5, 236.
 
 ```
 
