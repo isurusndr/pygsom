@@ -23,17 +23,17 @@ class GSOM:
         :param learning_rate: initial training learning rate of weights
         :param smooth_learning_factor: smooth learning factor to change the initial smooth learning rate from training
         :param max_radius: maximum neighbourhood radius
-        :param FD: spread weight value #TODO: check this from paper
-        :param r: learning rate update value #TODO: check this from paper
-        :param alpha: learning rate update value #TODO: check this from paper
+        :param FD: spread weight value
+        :param r: learning rate update value
+        :param alpha: learning rate update value
         :param initial_node_size: initial node allocation in memory
         """
         self.initial_node_size = initial_node_size
-        self.node_count = 0  # Keep current GSOM node count
+        self.node_count = 0
         self.map = {}
-        self.node_list = np.zeros((self.initial_node_size, dimensions))  # initialize node allocation in memory
-        self.node_coordinate = np.zeros((self.initial_node_size, 2))  # initialize node coordinate in memory
-        self.node_errors = np.zeros(self.initial_node_size, dtype=np.longdouble)  # initialize node error in memory
+        self.node_list = np.zeros((self.initial_node_size, dimensions))
+        self.node_coordinate = np.zeros((self.initial_node_size, 2), dtype=np.int32)
+        self.node_errors = np.zeros(self.initial_node_size, dtype=np.float64)
         self.spred_factor = spred_factor
         self.groth_threshold = -dimensions * math.log(self.spred_factor**2)
         self.FD = FD
@@ -47,13 +47,19 @@ class GSOM:
         self.max_radius = max_radius
         self.random_state = random_state
         self.initialize_GSOM()
-        self.node_labels = None  # Keep the prediction GSOM nodes
-        self.output = None # keep the cluster id of each data point
-        # HTM sequence learning parameters
-        self.predictive = None  # Keep the prediction of the next sequence value (HTM predictive state)
-        self.active = None  # Keep the activation of the current sequence value (HTM active state)
-        self.sequence_weights = None  # Sequence weight matrix. This has the dimensions node count*column height
+        self.node_labels = None
+        self.output = None
+        self.predictive = None
+        self.active = None
+        self.sequence_weights = None
+        
+        # Pre-compute coordinate index for faster lookups
+        self._coord_to_index = {}
+        self._update_coord_index()
 
+    def _update_coord_index(self):
+        """Update coordinate to index mapping"""
+        self._coord_to_index = self.map.copy()
 
     def initialize_GSOM(self):
         np.random.seed(self.random_state)
@@ -63,13 +69,17 @@ class GSOM:
         self.insert_node_with_weights(0, 0)
 
     def insert_new_node(self, x, y, weights):
-        if self.node_count > self.initial_node_size:
-            print("node size out of bound")
-            # TODO:resize the nodes
+        if self.node_count >= self.initial_node_size:
+            # Resize arrays dynamically
+            new_size = self.initial_node_size * 2
+            self.node_list = np.resize(self.node_list, (new_size, self.dimentions))
+            self.node_coordinate = np.resize(self.node_coordinate, (new_size, 2))
+            self.node_errors = np.resize(self.node_errors, new_size)
+            self.initial_node_size = new_size
+            
         self.map[(x, y)] = self.node_count
         self.node_list[self.node_count] = weights
-        self.node_coordinate[self.node_count][0] = x
-        self.node_coordinate[self.node_count][1] = y
+        self.node_coordinate[self.node_count] = [x, y]
         self.node_count += 1
 
     def insert_node_with_weights(self, x, y):
@@ -77,7 +87,6 @@ class GSOM:
             node_weights = np.random.rand(self.dimentions)
         else:
             print("initialize method not support")
-            # TODO:: add other initialize methods
         self.insert_new_node(x, y, node_weights)
 
     def _get_learning_rate(self, prev_learning_rate):
@@ -90,43 +99,39 @@ class GSOM:
         return self.max_radius * math.exp(- iteration / time_constant)
     
     def _get_lattice_neighbors(self, x, y, radius):
-        #this is a circular neighbourhood mask
+        """Optimized neighbor search"""
         neighbors = []
-        # Or else we can use manhattan distance for square neighbourhood
-        # Iterate over the winner node radius(neighbourhood) in the lattice
-        for i in range(x - radius, x + radius):
-            for j in range(y - radius, y + radius):
-                 # Check neighbour coordinate in the map not winner coordinates
+        # We use manhattan distance for square neighbourhood
+        for i in range(x - radius, x + radius + 1):
+            for j in range(y - radius, y + radius + 1):
                 if (i, j) in self.map and (i, j) != (x, y):
-                    if abs(i - x) + abs(j - y) <= radius: #manhattan distance for square(diamond) neighbourhood  
-                        neighbors.append((i, j))                    
+                    if abs(i - x) + abs(j - y) <= radius:
+                        neighbors.append((i, j))
         return neighbors
 
     def _new_weights_for_new_node_in_middle(self, winnerx, winnery, next_nodex, next_nodey):
-        weights = (self.node_list[self.map[(winnerx, winnery)]] + self.node_list[
-            self.map[(next_nodex, next_nodey)]]) * 0.5
-        return weights
+        return (self.node_list[self.map[(winnerx, winnery)]] + 
+                self.node_list[self.map[(next_nodex, next_nodey)]]) * 0.5
 
     def _new_weights_for_new_node_on_one_side(self, winnerx, winnery, earlier_nodex, earlier_nodey, nex_nodex, next_nodey):
-        # check if any other neighbour exists. If yes use that to calculate the new weights
-        #Wnew = (2*Wwinner - Wneighbour + Wother_neighbour)/2
         neighbours = self._get_lattice_neighbors(nex_nodex, next_nodey, 1)
-        #filter out the winner and earlier neighbour
         neighbours = [n for n in neighbours if n != (winnerx, winnery) and n != (earlier_nodex, earlier_nodey)]
+        
+        # check if any other neighbour exists. If yes use that to calculate the new weights
+        # e.g. Wnew = (2*Wwinner - Wneighbour + Wother_neighbour)/2
         if len(neighbours) > 0:
-            neighbour_infleunce = [self.node_list[self.map[n]] for n in neighbours]
-            weights = (2 * self.node_list[self.map[(winnerx, winnery)]] - self.node_list[
-                self.map[(earlier_nodex, earlier_nodey)]] + sum(neighbour_infleunce)) / (len(neighbours) +1)
+            neighbour_weights = self.node_list[[self.map[n] for n in neighbours]]
+            return (2 * self.node_list[self.map[(winnerx, winnery)]] - 
+                   self.node_list[self.map[(earlier_nodex, earlier_nodey)]] + 
+                   neighbour_weights.sum(axis=0)) / (len(neighbours) + 1)
         else:
-             weights = (2 * self.node_list[self.map[(winnerx, winnery)]] - self.node_list[
-            self.map[(earlier_nodex, earlier_nodey)]])
-       
-        return weights
+            # Wnew = (2*Wwinner - Wneighbour)
+            return (2 * self.node_list[self.map[(winnerx, winnery)]] - 
+                   self.node_list[self.map[(earlier_nodex, earlier_nodey)]])
 
     def _new_weights_for_new_node_one_older_neighbour(self, winnerx, winnery):
-        weights = np.full(self.dimentions, (max(self.node_list[self.map[(winnerx, winnery)]]) + min(
-            self.node_list[self.map[(winnerx, winnery)]])) / 2)
-        return weights
+        winner_weights = self.node_list[self.map[(winnerx, winnery)]]
+        return np.full(self.dimentions, (winner_weights.max() + winner_weights.min()) / 2)
 
     def grow_node(self, wx, wy, x, y, side):
         """
@@ -194,211 +199,207 @@ class GSOM:
         :param y:
         :param side:
         """
-        #See if need to direct the new node growth using error of other existing neighbours
-        #i.e. add new node towards the highest error neighbour direction
-        if not (x, y) in self.map:
-            if side == 0:  # add new node to left of winner
-                if (x - 1, y) in self.map:
-                    weights = self._new_weights_for_new_node_in_middle(wx, wy, x - 1, y)
-                elif (wx + 1, wy) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx + 1, wy, x, y)
-                elif (wx, wy + 1) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx, wy + 1, x, y)
-                elif (wx, wy - 1) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx, wy - 1, x, y)
-                else:
-                    weights = self._new_weights_for_new_node_one_older_neighbour(wx, wy)
-            elif side == 1:  # add new node to right of winner
-                if (x + 1, y) in self.map:
-                    weights = self._new_weights_for_new_node_in_middle(wx, wy, x + 1, y)
-                elif (wx - 1, wy) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx - 1, wy, x, y)
-                elif (wx, wy + 1) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx, wy + 1, x, y)
-                elif (wx, wy - 1) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx, wy - 1, x, y)
-                else:
-                    weights = self._new_weights_for_new_node_one_older_neighbour(wx, wy)
-            elif side == 2:  # add new node to top of winner
-                if (x, y + 1) in self.map:
-                    weights = self._new_weights_for_new_node_in_middle(wx, wy, x, y + 1)
-                elif (wx, wy - 1) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx, wy - 1, x, y)
-                elif (wx + 1, wy) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx + 1, wy, x, y)
-                elif (wx - 1, wy) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx - 1, wy, x, y)
-                else:
-                    weights = self._new_weights_for_new_node_one_older_neighbour(wx, wy)
-            elif side == 3:  # add new node to bottom of winner
-                if (x, y - 1) in self.map:
-                    weights = self._new_weights_for_new_node_in_middle(wx, wy, x, y - 1)
-                elif (wx, wy + 1) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx, wy + 1, x, y)
-                elif (wx + 1, wy) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx + 1, wy, x, y)
-                elif (wx - 1, wy) in self.map:
-                    weights = self._new_weights_for_new_node_on_one_side(wx, wy, wx - 1, wy, x, y)
-                else:
-                    weights = self._new_weights_for_new_node_one_older_neighbour(wx, wy)
-            # clip the wight between (0,1)
-            weights[weights < 0] = 0.0
-            weights[weights > 1] = 1.0
-            self.insert_new_node(x, y, weights)
+        if (x, y) in self.map:
+            return
+            
+        # Neighbor coordinates based on side
+        neighbor_map = {
+            0: [(x - 1, y), (wx + 1, wy), (wx, wy + 1), (wx, wy - 1)],  # left
+            1: [(x + 1, y), (wx - 1, wy), (wx, wy + 1), (wx, wy - 1)],  # right
+            2: [(x, y + 1), (wx, wy - 1), (wx + 1, wy), (wx - 1, wy)],  # top
+            3: [(x, y - 1), (wx, wy + 1), (wx + 1, wy), (wx - 1, wy)]   # bottom
+        }
+        
+        coords = neighbor_map[side]
+        
+        if coords[0] in self.map:
+            weights = self._new_weights_for_new_node_in_middle(wx, wy, coords[0][0], coords[0][1])
+        elif coords[1] in self.map:
+            weights = self._new_weights_for_new_node_on_one_side(wx, wy, coords[1][0], coords[1][1], x, y)
+        elif coords[2] in self.map:
+            weights = self._new_weights_for_new_node_on_one_side(wx, wy, coords[2][0], coords[2][1], x, y)
+        elif coords[3] in self.map:
+            weights = self._new_weights_for_new_node_on_one_side(wx, wy, coords[3][0], coords[3][1], x, y)
+        else:
+            weights = self._new_weights_for_new_node_one_older_neighbour(wx, wy)
+        
+        np.clip(weights, 0.0, 1.0, out=weights)
+        self.insert_new_node(x, y, weights)
 
-    def _spread_error(self, x, y):        
-        leftx, lefty = x - 1, y
-        rightx, righty = x + 1, y
-        topx, topy = x, y + 1
-        bottomx, bottomy = x, y - 1
-        erorr = self.node_errors[self.map[(x, y)]]
-        self.node_errors[self.map[(x, y)]] =erorr/2   #make the winer error half        
-        #distribute half of error to neighbours i.e. error of BMU will ripple outwards to its immediate neighbours
-        self.node_errors[self.map[(leftx, lefty)]] += erorr/(2*4)
-        self.node_errors[self.map[(rightx, righty)]] += erorr/(2*4)
-        self.node_errors[self.map[(topx, topy)]] += erorr/(2*4)
-        self.node_errors[self.map[(bottomx, bottomy)]] += erorr/(2*4)
+    def _spread_error(self, x, y):
+        neighbors = [(x - 1, y), (x + 1, y), (x, y + 1), (x, y - 1)]
+        error = self.node_errors[self.map[(x, y)]]
+        self.node_errors[self.map[(x, y)]] = error / 2
+        
+        spread_error = error / 8
+        for nx, ny in neighbors:
+            self.node_errors[self.map[(nx, ny)]] += spread_error
 
     def grow_and_error_distribute(self, x, y, bmu_index):
-        leftx, lefty = x - 1, y
-        rightx, righty = x + 1, y
-        topx, topy = x, y + 1
-        bottomx, bottomy = x, y - 1
-        # Check if all four neighbors exist in the 
-        if (leftx, lefty) in self.map \
-                and (rightx, righty) in self.map \
-                and (topx, topy) in self.map \
-                and (bottomx, bottomy) in self.map:
+        neighbors = [(x - 1, y), (x + 1, y), (x, y + 1), (x, y - 1)]
+        
+        # Check if all four neighbors exist
+        if all(coord in self.map for coord in neighbors):
             self._spread_error(x, y)
         else:
-        # Grow new nodes for the four sides
-            self.grow_node(x, y, leftx, lefty, 0)
-            self.grow_node(x, y, rightx, righty, 1)
-            self.grow_node(x, y, topx, topy, 2)
-            self.grow_node(x, y, bottomx, bottomy, 3)
-            # Set the error of node to half of the growth threshold
-            self.node_errors[bmu_index] = self.groth_threshold/2 
-            #self.node_errors[bmu_index] -= self.groth_threshold
+            # Grow new nodes in the four sides
+            for i, (nx, ny) in enumerate(neighbors):
+                self.grow_node(x, y, nx, ny, i)
+            self.node_errors[bmu_index] = self.groth_threshold / 2
 
-    def winner_identification_and_weight_adaptation(self, data_index, data, radius, learning_rate):
-        out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data[data_index, :].reshape(1, self.dimentions), self.distance)
-        bmu_index = out.argmin()  # get winner node index
-        error_val = out.min()
-        # get winner node coordinates
-        bmu_x = int(self.node_coordinate[bmu_index][0])
-        bmu_y = int(self.node_coordinate[bmu_index][1])
+    def winner_identification_and_weight_adaptation(self, data_batch, radius, learning_rate):
+        """Batch processing version for better performance"""
+        # Compute all distances at once
+        out = scipy.spatial.distance.cdist(
+            self.node_list[:self.node_count], 
+            data_batch, 
+            self.distance
+        )
         
-        # Update winner weights 
-        #shoud the neurons representing for many data points (hit count) be updated less significantly?
-        error = data[data_index] - self.node_list[bmu_index]
-        self.node_list[self.map[(bmu_x, bmu_y)]] = self.node_list[self.map[(bmu_x, bmu_y)]] + error * learning_rate
+        bmu_indices = out.argmin(axis=0)
+        error_vals = out.min(axis=0)
+        
+        # Pre-compute Gaussian factors
+        radius_sq_2 = 2.0 * radius * radius
         
         # Update neighborhood using Gaussian neighborhood function
         # SOM learning rule: wi(t+1) = wi(t) + η(t) × h(t) × (xj - wi(t))
         # where η(t) is learning_rate, h(t) is Gaussian neighborhood function
+        
+        results = []
+        for idx, bmu_index in enumerate(bmu_indices):
+            bmu_x = int(self.node_coordinate[bmu_index, 0])
+            bmu_y = int(self.node_coordinate[bmu_index, 1])
+            
+            # Update winner weights
+            error = data_batch[idx] - self.node_list[bmu_index]
+            self.node_list[bmu_index] += error * learning_rate
+            
+            # Update neighborhood
+            mask_size = round(radius)
+            neighbors = self._get_lattice_neighbors(bmu_x, bmu_y, mask_size)
+            
+            for i, j in neighbors:
+                neighbor_idx = self.map[(i, j)]
+                error = data_batch[idx] - self.node_list[neighbor_idx]
+                #Gaussian neighborhood function h(t) = exp(-distance^2 / (2 * sigma^2)) where sigma is the current neighborhood radius
+                dist_sq = (bmu_x - i)**2 + (bmu_y - j)**2
+                influence = np.exp(-dist_sq / radius_sq_2)
+                # Update neighbour weights using SOM weight update rule
+                self.node_list[neighbor_idx] += learning_rate * influence * error
+            
+            results.append((bmu_index, bmu_x, bmu_y, error_vals[idx]))
+        
+        return results
 
-        # Get integer radius value
-        mask_size = round(radius)
-        neighbors = self._get_lattice_neighbors(bmu_x, bmu_y, mask_size)
-        #iterate over the neighbors within the radius
-        for i, j in neighbors:
-            error = data[data_index] - self.node_list[self.map[(i, j)]] # get error between data point and neighbour
-            #Gaussian neighborhood function h(t) = exp(-distance^2 / (2 * sigma^2)) where sigma is the current neighborhood radius
-            # Here we have taken q=1. q can be a hyperparameter to control.e.g. q=0.5,1,2.. increased q can reduce quantization error, however restict the topological ordering
-            dist_sq = (bmu_x - i)**2 + (bmu_y - j)**2 # eculidean distance of lattice neighbours
-            eDistance = np.exp(-1.0 * dist_sq / (2.0 * (radius * radius)))  # influence from distance
-            # Update neighbour weights using SOM weight update rule
-            self.node_list[self.map[(i, j)]] = self.node_list[self.map[(i, j)]] + learning_rate * eDistance * error
+    def smooth(self, data, radius, learning_rate, batch_size=100):
+        """Process data in batches for better performance"""
+        num_samples = data.shape[0]
+        for i in range(0, num_samples, batch_size):
+            end_idx = min(i + batch_size, num_samples)
+            batch = data[i:end_idx]
+            self.winner_identification_and_weight_adaptation(batch, radius, learning_rate)
 
-        return bmu_index, bmu_x, bmu_y, error_val
-
-    def smooth(self, data, radius, learning_rate):
-        # Iterate all data points
-        for data_index in range(data.shape[0]):
-            self.winner_identification_and_weight_adaptation(data_index, data, radius, learning_rate)
-
-    def grow(self, data, radius, learning_rate):
-        # Iterate all data points
-        for data_index in range(data.shape[0]):
-            bmu_index, bmu_x, bmu_y, error_val = self.winner_identification_and_weight_adaptation(data_index, data, radius, learning_rate)
-
-            # winner node error update and grow 
-            # Original SOM error update rule: Ewinner​(t+1) = Ewinner​(t) + ∥Xj​ − Wwinner​∥
-            self.node_errors[bmu_index] += error_val
-            if self.node_errors[bmu_index] > self.groth_threshold:
-                self.grow_and_error_distribute(bmu_x, bmu_y, bmu_index) ### check here: is this leads to double weight update?
+    def grow(self, data, radius, learning_rate, batch_size=100):
+        """Process data in batches with growth"""
+        num_samples = data.shape[0]
+        for i in range(0, num_samples, batch_size):
+            end_idx = min(i + batch_size, num_samples)
+            batch = data[i:end_idx]
+            results = self.winner_identification_and_weight_adaptation(batch, radius, learning_rate)
+            
+            # Handle growth for each sample in batch
+            for bmu_index, bmu_x, bmu_y, error_val in results:
+                self.node_errors[bmu_index] += error_val
+                if self.node_errors[bmu_index] > self.groth_threshold:
+                    self.grow_and_error_distribute(bmu_x, bmu_y, bmu_index)
 
     def fit(self, data, training_iterations, smooth_iterations):
         """
-        method to train the GSOM map
-        :param data:
-        :param training_iterations:
-        :param smooth_iterations:
+        Optimized training method
+        :param data: training data
+        :param training_iterations: number of growing iterations
+        :param smooth_iterations: number of smoothing iterations
         """
         current_learning_rate = self.learning_rate
-        # growing iterations
-        for i in tqdm(range(training_iterations)):
+        
+        # Growing iterations
+        for i in tqdm(range(training_iterations), desc="Growing"):
             radius_exp = self._get_neighbourhood_radius(training_iterations, i)
             if i != 0:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
 
             self.grow(data, radius_exp, current_learning_rate)
-            np.random.shuffle(data) # shuffle data rows for next iteration. 
+            np.random.shuffle(data)
             
-        # smoothing iterations
+        # Smoothing iterations
         current_learning_rate = self.learning_rate * self.smooth_learning_factor
-        for i in tqdm(range(smooth_iterations)):
-            radius_exp = self._get_neighbourhood_radius(training_iterations, i)
+        for i in tqdm(range(smooth_iterations), desc="Smoothing"):
+            radius_exp = self._get_neighbourhood_radius(smooth_iterations, i)
             if i != 0:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
 
-            self.smooth(data, radius_exp, current_learning_rate)            
-            np.random.shuffle(data) # shuffle data rows for next iteration. 
-            
-        # Identify winners
+            self.smooth(data, radius_exp, current_learning_rate)
+            np.random.shuffle(data)
+        
+        # Identify winners (vectorized)
         out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data, self.distance)
         return out.argmin(axis=0)
 
     def predict(self, data, index_col, label_col=None):
         """
-        Identify the winner nodes for test dataset
-        Predict the winning node for each data point and create a pandas dataframe
-        need to provide both index column and label column
-        :param data:
-        :param index_col:
-        :param label_col:
-        :return:
+        Optimized prediction method
+        :param data: test data
+        :param index_col: index column name
+        :param label_col: label column name (optional)
+        :return: node labels dataframe
         """
-
-        # Prepare the dataset - remove label and index column
+        # Prepare dataset
         weight_columns = list(data.columns.values)
         output_columns = [index_col]
+        
         if label_col:
             weight_columns.remove(label_col)
             output_columns.append(label_col)
-
+        
         weight_columns.remove(index_col)
         data_n = data[weight_columns].to_numpy()
-        data_out = pd.DataFrame(data[output_columns])
-        # Identify winners
+        
+        # Vectorized winner identification
         out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data_n, self.distance)
-        data_out["output"] = out.argmin(axis=0)
-
-        grp_output =data_out.groupby("output")
-        dn = grp_output[index_col].apply(list).reset_index()
-        dn = dn.set_index("output")
+        winners = out.argmin(axis=0)
+        
+        # Build output dataframe efficiently
+        data_out = data[output_columns].copy()
+        data_out["output"] = winners
+        
+        # Group and aggregate
+        grouped = data_out.groupby("output")
+        
+        result_data = {
+            'output': [],
+            index_col: [],
+            'hit_count': [],
+            'x': [],
+            'y': []
+        }
+        
         if label_col:
-            dn[label_col] = grp_output[label_col].apply(list)
-        dn = dn.reset_index()
-        dn["hit_count"] = dn[index_col].apply(lambda x: len(x))
-        dn["x"] = dn["output"].apply(lambda x: self.node_coordinate[x, 0])
-        dn["y"] = dn["output"].apply(lambda x: self.node_coordinate[x, 1])
-        hit_max_count = dn["hit_count"].max()
-        self.node_labels = dn
-        # display map
-        #plot(self.node_labels, index_col)
+            result_data[label_col] = []
+        
+        for output_id, group in grouped:
+            result_data['output'].append(output_id)
+            result_data[index_col].append(group[index_col].tolist())
+            result_data['hit_count'].append(len(group))
+            result_data['x'].append(self.node_coordinate[output_id, 0])
+            result_data['y'].append(self.node_coordinate[output_id, 1])
+            
+            if label_col:
+                result_data[label_col].append(group[label_col].tolist())
+        
+        self.node_labels = pd.DataFrame(result_data)
         self.output = data_out
-
+        
         return self.node_labels
 
 
@@ -409,7 +410,6 @@ if __name__ == '__main__':
     data_training = df.iloc[:, 1:17]
     gsom = GSOM(.83, 16, max_radius=4)
     gsom.fit(data_training.to_numpy(), 100, 50)
-    output = gsom.predict(df,"Name","label")
+    output = gsom.predict(df, "Name", "label")
     output.to_csv("output.csv", index=False)
-
     print("complete")
