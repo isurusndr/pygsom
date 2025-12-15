@@ -70,6 +70,7 @@ We have applied a few modifications on the original algorithm as specified in th
 * Hsu, A., & Halgamuge, S. K. (2008). Class structure visualization with semi-supervised growing self-organizing maps. Neurocomputing, 71(16-18), 3124-3130.
 * Cao, M., Li, A., Fang, Q., Kaufmann, E., & Kröger, B. J. (2014). Interconnected growing self-organizing maps for auditory and semantic acquisition modeling. Frontiers in psychology, 5, 236.
 * See (dynamic learning rate depending on the number of nodes in the map):Cao, M., Li, A., Fang, Q., Kaufmann, E., & Kröger, B. J. (2014). Interconnected growing self-organizing maps for auditory and semantic acquisition modeling. Frontiers in psychology, 5, 236.
+** Hoan, N. Q. (2016). Improving feature map quality of SOM based on adjusting the neighborhood function. Int. J. Comput. Sci. Inf. Secur.(IJCSIS), 14(9).
 
 ```
 
