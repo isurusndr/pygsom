@@ -35,7 +35,7 @@ class GSOM:
         self.node_coordinate = np.zeros((self.initial_node_size, 2), dtype=np.int32)
         self.node_errors = np.zeros(self.initial_node_size, dtype=np.float64)
         self.spred_factor = spred_factor
-        self.groth_threshold = -dimensions * math.log(self.spred_factor**2)
+        self.groth_threshold = -dimensions * math.log((self.spred_factor**2)/(2*dimensions**2))
         self.FD = FD
         self.R = r
         self.ALPHA = alpha
@@ -314,7 +314,7 @@ class GSOM:
                 if self.node_errors[bmu_index] > self.groth_threshold:
                     self.grow_and_error_distribute(bmu_x, bmu_y, bmu_index)
 
-    def fit(self, data, training_iterations, smooth_iterations):
+    def fit(self, data, training_iterations, smooth_iterations, batch_size=100):
         """
         Optimized training method
         :param data: training data
@@ -329,7 +329,7 @@ class GSOM:
             if i != 0:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
 
-            self.grow(data, radius_exp, current_learning_rate)
+            self.grow(data, radius_exp, current_learning_rate, batch_size)
             np.random.shuffle(data)
             
         # Smoothing iterations
@@ -339,7 +339,7 @@ class GSOM:
             if i != 0:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
 
-            self.smooth(data, radius_exp, current_learning_rate)
+            self.smooth(data, radius_exp, current_learning_rate, batch_size)
             np.random.shuffle(data)
         
         # Identify winners (vectorized)
