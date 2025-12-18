@@ -228,7 +228,7 @@ class GSOM:
 
     def _spread_error(self, x, y):
         neighbors = [(x - 1, y), (x + 1, y), (x, y + 1), (x, y - 1)]
-        error = self.node_errors[self.map[(x, y)]]
+        error = self.node_errors[self.map[(x, y)]]*self.FD/self.dimentions ## we use FD also control the map growth
         self.node_errors[self.map[(x, y)]] = error / 2
         
         spread_error = error / 8
