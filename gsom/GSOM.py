@@ -331,6 +331,8 @@ class GSOM:
 
             self.grow(data, radius_exp, current_learning_rate, batch_size)
             np.random.shuffle(data)
+            #incrase growth threshold based on spred_factor and learning rate and iteration
+            self.groth_threshold *= (1 + math.log(self.node_count)*(1-self.spred_factor)*(1-(i/training_iterations)))
             
         # Smoothing iterations
         current_learning_rate = self.learning_rate * self.smooth_learning_factor
