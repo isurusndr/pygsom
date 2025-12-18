@@ -35,7 +35,7 @@ class GSOM:
         self.node_coordinate = np.zeros((self.initial_node_size, 2), dtype=np.int32)
         self.node_errors = np.zeros(self.initial_node_size, dtype=np.float64)
         self.spred_factor = spred_factor
-        self.groth_threshold = -dimensions * math.log(self.spred_factor**2)
+        self.groth_threshold = -dimensions * math.log(self.spred_factor)
         self.FD = FD
         self.R = r
         self.ALPHA = alpha
