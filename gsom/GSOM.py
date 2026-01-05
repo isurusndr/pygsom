@@ -101,7 +101,7 @@ class GSOM:
     def _get_lattice_neighbors(self, x, y, radius):
         """Optimized neighbor search"""
         neighbors = []
-        # We use manhattan distance for square neighbourhood
+        # We use manhattan distance for diamond neighbourhood
         for i in range(x - radius, x + radius + 1):
             for j in range(y - radius, y + radius + 1):
                 if (i, j) in self.map and (i, j) != (x, y):
@@ -113,17 +113,18 @@ class GSOM:
         return (self.node_list[self.map[(winnerx, winnery)]] + 
                 self.node_list[self.map[(next_nodex, next_nodey)]]) * 0.5
 
-    def _new_weights_for_new_node_on_one_side(self, winnerx, winnery, earlier_nodex, earlier_nodey, nex_nodex, next_nodey):
-        neighbours = self._get_lattice_neighbors(nex_nodex, next_nodey, 1)
-        neighbours = [n for n in neighbours if n != (winnerx, winnery) and n != (earlier_nodex, earlier_nodey)]
+    def _new_weights_for_new_node_on_one_side(self, winnerx, winnery, earlier_nodex, earlier_nodey, next_nodex, next_nodey):
+        #new_node_neighbours = self._get_lattice_neighbors(next_nodex, next_nodey, 1)
+        new_node_neighbours =  [(next_nodex -1, next_nodey), (next_nodex + 1, next_nodey), (next_nodex, next_nodey - 1), (next_nodex, next_nodey + 1)]
+        new_node_neighbours = [n for n in new_node_neighbours if n in self.map and n != (winnerx, winnery) and n != (earlier_nodex, earlier_nodey)]
         
         # check if any other neighbour exists. If yes use that to calculate the new weights
-        # e.g. Wnew = (2*Wwinner - Wneighbour + Wother_neighbour)/2
-        if len(neighbours) > 0:
-            neighbour_weights = self.node_list[[self.map[n] for n in neighbours]]
+        # e.g. Wnew = ((2*Wwinner - Wneighbour) + Wother_neighbour)/2
+        if len(new_node_neighbours) > 0:
+            neighbour_weights = self.node_list[[self.map[n] for n in new_node_neighbours]]
             return (2 * self.node_list[self.map[(winnerx, winnery)]] - 
                    self.node_list[self.map[(earlier_nodex, earlier_nodey)]] + 
-                   neighbour_weights.sum(axis=0)) / (len(neighbours) + 1)
+                   neighbour_weights.sum(axis=0)) / (len(new_node_neighbours) + 1)
         else:
             # Wnew = (2*Wwinner - Wneighbour)
             return (2 * self.node_list[self.map[(winnerx, winnery)]] - 
@@ -228,7 +229,7 @@ class GSOM:
 
     def _spread_error(self, x, y):
         neighbors = [(x - 1, y), (x + 1, y), (x, y + 1), (x, y - 1)]
-        error = self.node_errors[self.map[(x, y)]]*self.FD/self.dimentions ## we use FD also control the map growth
+        error = self.node_errors[self.map[(x, y)]]*self.FD ## we use FD also control the map growth
         self.node_errors[self.map[(x, y)]] = error / 2
         
         spread_error = error / 8
@@ -236,7 +237,8 @@ class GSOM:
             self.node_errors[self.map[(nx, ny)]] += spread_error
 
     def grow_and_error_distribute(self, x, y, bmu_index):
-        neighbors = [(x - 1, y), (x + 1, y), (x, y + 1), (x, y - 1)]
+        # This is a diamond neighborhood with radius 1
+        neighbors = [(x - 1, y), (x + 1, y), (x, y + 1), (x, y - 1)] # left, right, top, bottom neighbors
         
         # Check if all four neighbors exist
         if all(coord in self.map for coord in neighbors):
@@ -261,6 +263,7 @@ class GSOM:
         
         # Pre-compute Gaussian factors
         radius_sq_2 = 2.0 * radius * radius
+        mask_size = round(radius)
         
         # Update neighborhood using Gaussian neighborhood function
         # SOM learning rule: wi(t+1) = wi(t) + η(t) × h(t) × (xj - wi(t))
@@ -275,10 +278,8 @@ class GSOM:
             error = data_batch[idx] - self.node_list[bmu_index]
             self.node_list[bmu_index] += error * learning_rate
             
-            # Update neighborhood
-            mask_size = round(radius)
-            neighbors = self._get_lattice_neighbors(bmu_x, bmu_y, mask_size)
-            
+            # Update neighborhood            
+            neighbors = self._get_lattice_neighbors(bmu_x, bmu_y, mask_size)            
             for i, j in neighbors:
                 neighbor_idx = self.map[(i, j)]
                 error = data_batch[idx] - self.node_list[neighbor_idx]
@@ -314,7 +315,7 @@ class GSOM:
                 if self.node_errors[bmu_index] > self.groth_threshold:
                     self.grow_and_error_distribute(bmu_x, bmu_y, bmu_index)
 
-    def fit(self, data, training_iterations, smooth_iterations, batch_size=100):
+    def fit(self, data, training_iterations, smooth_iterations, batch_size=100, shuffle=True):
         """
         Optimized training method
         :param data: training data
@@ -330,7 +331,8 @@ class GSOM:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
 
             self.grow(data, radius_exp, current_learning_rate, batch_size)
-            np.random.shuffle(data)
+            if shuffle:
+                np.random.shuffle(data)
             #incrase growth threshold based on spred_factor and learning rate and iteration
             self.groth_threshold *= (1 + math.log(self.node_count)*(1-self.spred_factor)*(1-(i/training_iterations)))
             
@@ -342,7 +344,8 @@ class GSOM:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
 
             self.smooth(data, radius_exp, current_learning_rate, batch_size)
-            np.random.shuffle(data)
+            if shuffle:
+                np.random.shuffle(data)
         
         # Identify winners (vectorized)
         out = scipy.spatial.distance.cdist(self.node_list[:self.node_count], data, self.distance)

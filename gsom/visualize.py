@@ -21,7 +21,7 @@ def plot(output, index_col,gsom_map = None, file_name="gsom", file_type = ".pdf"
     listed_color_map = _get_color_map(max_count, alpha=0.9, cmap_colors=cmap_colors)
     fig, ax = plt.subplots()
     if gsom_map:
-        ax.plot(gsom_map.node_coordinate[:180,0], gsom_map.node_coordinate[:180,1], 'o',
+        ax.plot(gsom_map.node_coordinate[:gsom_map.node_count,0], gsom_map.node_coordinate[:gsom_map.node_count,1], 'o',
                 color=listed_color_map.colors[0], markersize=2)
     for index, i in output.iterrows():
         x = i['x']
