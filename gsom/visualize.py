@@ -28,12 +28,12 @@ def plot(output, index_col,gsom_map = None, file_name="gsom", file_type = ".pdf"
         y = i['y']
         ax.plot(x, y, 'o', color=listed_color_map.colors[i['hit_count']], markersize=2)
         if show_index:
-	        if i['hit_count']>0:
-	            label = ", ".join(map(str,i[index_col][0:max_text]))
-	        else:
-	            label = ""
-	        txt = ax.text(x, y,label, ha='left', va='center', wrap=True, fontsize=4)
-	        txt._get_wrap_line_width = lambda: max_length  # wrap to n screen pixels
+            if i['hit_count']>0:
+                label = ", ".join(map(str,i[index_col][0:max_text]))
+            else:
+                label = ""
+            txt = ax.text(x, y,label, ha='left', va='center', wrap=True, fontsize=4)
+            txt._get_wrap_line_width = lambda: max_length  # wrap to n screen pixels
 
     ax.set_title(figure_label)
     plt.savefig(file_name+file_type)
