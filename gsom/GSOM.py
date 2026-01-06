@@ -249,17 +249,17 @@ class GSOM:
                 self.grow_node(x, y, nx, ny, i)
             self.node_errors[bmu_index] = self.groth_threshold / 2
 
-    def winner_identification_and_weight_adaptation(self, data_batch, radius, learning_rate):
+    def winner_identification_and_weight_adaptation(self, data_sample, radius, learning_rate):
         """Batch processing version for better performance"""
         # Compute all distances at once
-        out = scipy.spatial.distance.cdist(
+        distances = scipy.spatial.distance.cdist(
             self.node_list[:self.node_count], 
-            data_batch, 
+            data_sample.reshape(1, -1), 
             self.distance
-        )
+        ).flatten()
         
-        bmu_indices = out.argmin(axis=0)
-        error_vals = out.min(axis=0)
+        bmu_index = distances.argmin()
+        error_val = distances[bmu_index]
         
         # Pre-compute Gaussian factors
         radius_sq_2 = 2.0 * radius * radius
@@ -269,53 +269,42 @@ class GSOM:
         # SOM learning rule: wi(t+1) = wi(t) + η(t) × h(t) × (xj - wi(t))
         # where η(t) is learning_rate, h(t) is Gaussian neighborhood function
         
-        results = []
-        for idx, bmu_index in enumerate(bmu_indices):
-            bmu_x = int(self.node_coordinate[bmu_index, 0])
-            bmu_y = int(self.node_coordinate[bmu_index, 1])
-            
-            # Update winner weights
-            error = data_batch[idx] - self.node_list[bmu_index]
-            self.node_list[bmu_index] += error * learning_rate
-            
-            # Update neighborhood            
-            neighbors = self._get_lattice_neighbors(bmu_x, bmu_y, mask_size)            
-            for i, j in neighbors:
-                neighbor_idx = self.map[(i, j)]
-                error = data_batch[idx] - self.node_list[neighbor_idx]
-                #Gaussian neighborhood function h(t) = exp(-distance^2 / (2 * sigma^2)) where sigma is the current neighborhood radius
-                dist_sq = (bmu_x - i)**2 + (bmu_y - j)**2
-                influence = np.exp(-dist_sq / radius_sq_2)
-                # Update neighbour weights using SOM weight update rule
-                self.node_list[neighbor_idx] += learning_rate * influence * error
-            
-            results.append((bmu_index, bmu_x, bmu_y, error_vals[idx]))
+        bmu_x = int(self.node_coordinate[bmu_index, 0])
+        bmu_y = int(self.node_coordinate[bmu_index, 1])
         
-        return results
+        # Update winner weights
+        error = data_sample - self.node_list[bmu_index]
+        self.node_list[bmu_index] += error * learning_rate
+        
+        # Update neighborhood            
+        neighbors = self._get_lattice_neighbors(bmu_x, bmu_y, mask_size)            
+        for i, j in neighbors:
+            neighbor_idx = self.map[(i, j)]
+            error = data_sample - self.node_list[neighbor_idx]
+            #Gaussian neighborhood function h(t) = exp(-distance^2 / (2 * sigma^2)) where sigma is the current neighborhood radius
+            dist_sq = (bmu_x - i)**2 + (bmu_y - j)**2
+            influence = np.exp(-dist_sq / radius_sq_2)
+            # Update neighbour weights using SOM weight update rule
+            self.node_list[neighbor_idx] += learning_rate * influence * error
+        
+        return bmu_index, bmu_x, bmu_y, error_val
 
-    def smooth(self, data, radius, learning_rate, batch_size=100):
+    def smooth(self, data, radius, learning_rate):
         """Process data in batches for better performance"""
-        num_samples = data.shape[0]
-        for i in range(0, num_samples, batch_size):
-            end_idx = min(i + batch_size, num_samples)
-            batch = data[i:end_idx]
-            self.winner_identification_and_weight_adaptation(batch, radius, learning_rate)
+        for i in range(data.shape[0]):
+            self.winner_identification_and_weight_adaptation(data[i], radius, learning_rate)
 
-    def grow(self, data, radius, learning_rate, batch_size=100):
+    def grow(self, data, radius, learning_rate):
         """Process data in batches with growth"""
-        num_samples = data.shape[0]
-        for i in range(0, num_samples, batch_size):
-            end_idx = min(i + batch_size, num_samples)
-            batch = data[i:end_idx]
-            results = self.winner_identification_and_weight_adaptation(batch, radius, learning_rate)
+        for i in range(data.shape[0]):
+            bmu_index, bmu_x, bmu_y, error_val = self.winner_identification_and_weight_adaptation(data[i], radius, learning_rate)
             
             # Handle growth for each sample in batch
-            for bmu_index, bmu_x, bmu_y, error_val in results:
-                self.node_errors[bmu_index] += error_val
-                if self.node_errors[bmu_index] > self.groth_threshold:
-                    self.grow_and_error_distribute(bmu_x, bmu_y, bmu_index)
+            self.node_errors[bmu_index] += error_val
+            if self.node_errors[bmu_index] > self.groth_threshold:
+                self.grow_and_error_distribute(bmu_x, bmu_y, bmu_index)
 
-    def fit(self, data, training_iterations, smooth_iterations, batch_size=100, shuffle=True):
+    def fit(self, data, training_iterations, smooth_iterations, shuffle=True):
         """
         Optimized training method
         :param data: training data
@@ -330,7 +319,7 @@ class GSOM:
             if i != 0:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
 
-            self.grow(data, radius_exp, current_learning_rate, batch_size)
+            self.grow(data, radius_exp, current_learning_rate)
             if shuffle:
                 np.random.shuffle(data)
             #incrase growth threshold based on spred_factor and learning rate and iteration
@@ -343,7 +332,7 @@ class GSOM:
             if i != 0:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
 
-            self.smooth(data, radius_exp, current_learning_rate, batch_size)
+            self.smooth(data, radius_exp, current_learning_rate)
             if shuffle:
                 np.random.shuffle(data)
         
