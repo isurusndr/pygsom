@@ -532,12 +532,14 @@ if __name__ == '__main__':
     df = pd.read_csv(data_filename)
     print(f"Data shape: {df.shape}")
     
-    # Example: First 13 features are numerical, features 13-16 are categorical
-    # Modify according to your actual data structure
-    num_features = 13
-    cat_features_dict = {13: 5, 14: 3, 15: 2, 16: 7}  # {feature_idx: num_categories}
+    # There are 15 boolean features corresponding to the presence of hair, feathers, eggs, milk, 
+    # backbone, ﬁns, tail; and whether airborne, aquatic, predator, toothed, breathes, venomous, domestic, catsize. 
+    # The numeric attribute corresponds to the number of legs
+    num_features = 1
+    cat_features_dict = {0: 2, 1: 2, 2: 2, 3: 2, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2, 
+                         9: 2, 10: 2, 11: 2, 13: 2, 14: 2, 15: 2}  # {feature_idx: num_categories}
     
-    data_training = df.iloc[:, 1:17].to_numpy()
+    data_training = df.iloc[:, 1:16].to_numpy()
     
     gsom = GSOM_Mixed(
         spred_factor=0.83,

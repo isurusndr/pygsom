@@ -401,8 +401,8 @@ if __name__ == '__main__':
     np.random.seed(1)
     df = pd.read_csv(data_filename)
     print(df.shape)
-    data_training = df.iloc[:, 1:17]
-    gsom = GSOM(.83, 16, max_radius=4)
+    data_training = df.iloc[:, 1:16] #need to scale data first
+    gsom = GSOM(.83, 15, max_radius=4)
     gsom.fit(data_training.to_numpy(), 100, 50)
     output = gsom.predict(df, "Name", "label")
     output.to_csv("output.csv", index=False)
