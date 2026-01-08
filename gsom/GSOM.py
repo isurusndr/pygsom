@@ -39,6 +39,7 @@ class GSOM:
         self.FD = FD
         self.R = r
         self.ALPHA = alpha
+        self.LAMBDA = np.clip(1 - self.spred_factor, 0.2, 0.9)
         self.dimentions = dimensions
         self.distance = distance
         self.initialize = initialize
@@ -322,8 +323,8 @@ class GSOM:
             self.grow(data, radius_exp, current_learning_rate)
             if shuffle:
                 np.random.shuffle(data)
-            #incrase growth threshold based on spred_factor and learning rate and iteration
-            self.groth_threshold *= (1 + math.log(self.node_count)*(1-self.spred_factor)*(1-(i/training_iterations)))
+            #incrase growth threshold based on growth control factor, training iteration and current node count
+            self.groth_threshold *= (1 + self.LAMBDA*(i/training_iterations)*math.log(1+self.node_count))
             
         # Smoothing iterations
         current_learning_rate = self.learning_rate * self.smooth_learning_factor
