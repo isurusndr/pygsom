@@ -54,7 +54,7 @@ class GSOM_Mixed:
         self.FD = FD
         self.R = r
         self.ALPHA = alpha
-        self.LAMBDA = np.clip(1 - self.spred_factor, 0.2, 0.9)
+        self.LAMBDA = np.clip(1 - self.spred_factor, 0.1, 0.9)
         self.distance = distance
         self.initialize = initialize
         self.learning_rate = learning_rate
@@ -441,13 +441,13 @@ class GSOM_Mixed:
             radius_exp = self._get_neighbourhood_radius(training_iterations, i)
             if i != 0:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
+                #incrase growth threshold based on growth control factor, training iteration and current node count
+                decay = np.clip(1-(i/training_iterations), 0.1, 0.9) # progressive decay factor to prevent early over growth
+                self.groth_threshold *= (1 + self.LAMBDA*decay*math.log(1+self.node_count))
 
             self.grow(data, radius_exp, current_learning_rate)
             if shuffle:
                 np.random.shuffle(data)
-            
-            #incrase growth threshold based on growth control factor, training iteration and current node count
-            self.groth_threshold *= (1 + self.LAMBDA*(i/training_iterations)*math.log(1+self.node_count))
             
         # Smoothing iterations
         current_learning_rate = self.learning_rate * self.smooth_learning_factor
