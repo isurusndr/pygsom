@@ -321,7 +321,7 @@ class GSOM:
                 current_learning_rate = self._get_learning_rate(current_learning_rate)
                 #incrase growth threshold based on growth control factor, training iteration and current node count
                 decay = np.clip(1-(i/training_iterations), 0.1, 0.9) # progressive decay factor to prevent early over growth
-                self.groth_threshold *= (1 + self.LAMBDA*decay*math.log(1+self.node_count))
+                self.groth_threshold *= (1 + self.LAMBDA*decay) #*math.log(1+self.node_count)
 
             self.grow(data, radius_exp, current_learning_rate)
             if shuffle:
